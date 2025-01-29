@@ -1,14 +1,31 @@
 from flask import Flask, request, render_template, redirect, url_for, send_from_directory, jsonify
 import os
 import subprocess
+import nltk
+from contextlib import redirect_stdout
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'datasets/uploaded_dataset'
 app.config['RESULT_FOLDER'] = 'static'
 
+
 @app.route('/')
 def index():
     return render_template('index.html', result_csv=None, error_message=None)
+
+
+# Suppress output during the download of NLTK resources
+def download_nltk_resources():
+    with open(os.devnull, 'w') as fnull:
+        with redirect_stdout(fnull):
+            nltk.download('stopwords')
+            nltk.download('punkt')
+            nltk.download('vader_lexicon')
+            nltk.download('wordnet')
+
+# Call the NLTK downloads once when the app starts
+download_nltk_resources()
+
 
 @app.route('/absa', methods=['POST'])
 def upload_file():

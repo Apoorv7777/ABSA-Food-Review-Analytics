@@ -16,11 +16,6 @@ from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import pickle
 
 
-nltk.download('stopwords')
-nltk.download('punkt')
-nltk.download('vader_lexicon')
-
-
 # Load the spaCy English model
 nlp = spacy.load("en_core_web_sm")
 
@@ -171,7 +166,7 @@ def main(filename):
 
 	### Preprocessing Review to create new column cleaned_review
 	from tqdm import tqdm
-	nltk.download('wordnet')
+
 	tqdm.pandas()
 
 	# df_temp['y'] = df_temp.ratings.progress_map(label)
@@ -544,8 +539,8 @@ if __name__ == "__main__":
 		graphs(input_df)
 	else:
 		# Handle text data
-		result_csv = absa_random(data)
-		print(result_csv) # Print the result CSV to the console
+		resultcsv = absa_random(data)
+		print(resultcsv) # Print the result CSV to the console
 		
 		
 		
