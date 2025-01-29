@@ -43,7 +43,7 @@ Below are some previews of the application interface:
 ![Review Analysis](static/screenshots/review_analysis.png)
 
 ### 📌 Sentiment Distribution Graph
-![Result Graph](static/screenshots/output_graphs.png)
+![Result Graph](static/screenshots/graph_outputs.png)
 
 ---
 
