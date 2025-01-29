@@ -16,7 +16,7 @@ from sklearn.metrics import accuracy_score, classification_report
 import pickle
 
 # Load the dataset
-df = pd.read_csv("datasets/training_dataset/Preprocessed_Restuarant_Dataset.csv")
+df = pd.read_csv("../datasets/training_dataset/Preprocessed_Restuarant_Dataset.csv")
 
 
 # Split the data into training and testing sets
@@ -101,11 +101,11 @@ SVM_opinion_category_classifier.fit(X1_train_tfidf, y_category_train)
 
 
 # Save the trained TF-IDF vectorizer
-with open("pickle_files/tfidf_vectorizer_AE.pkl", "wb") as f:
+with open("../models/tfidf_vectorizer_AE.pkl", "wb") as f:
     pickle.dump(tfidf_vectorizer_AE, f)
 
 # Save the trained SVM model
-with open("pickle_files/SVM_opinion_category_classifier.pkl", "wb") as f:
+with open("../models/SVM_opinion_category_classifier.pkl", "wb") as f:
     pickle.dump(SVM_opinion_category_classifier, f)
 
 #main

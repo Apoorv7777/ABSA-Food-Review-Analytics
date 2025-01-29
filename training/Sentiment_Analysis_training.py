@@ -15,7 +15,7 @@ from sklearn.metrics import accuracy_score, classification_report
 import pickle
 
 #Load the dataset
-df = pd.read_csv("datasets/training_dataset/Preprocessed_Restuarant_Dataset.csv")
+df = pd.read_csv("../datasets/training_dataset/Preprocessed_Restuarant_Dataset.csv")
 
 
 # Split the data into training and testing sets
@@ -96,11 +96,11 @@ svm_sentiment_classifier.fit(X_train_tfidf, y_polarity_train)
 
 
 # Save the trained TF-IDF vectorizer
-with open("pickle_files/tfidf_vectorizer_SA.pkl", "wb") as f:
+with open("../models/tfidf_vectorizer_SA.pkl", "wb") as f:
     pickle.dump(tfidf_vectorizer_SA, f)
 
 # Save the trained SVM model
-with open("pickle_files/svm_sentiment_classifier.pkl", "wb") as f:
+with open("../models/svm_sentiment_classifier.pkl", "wb") as f:
     pickle.dump(svm_sentiment_classifier, f)
 
 

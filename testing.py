@@ -169,7 +169,7 @@ def main(filename):
 	input_df = pd.read_csv(filename)
 
 	input_df['idx'] = range(10, (len(input_df) + 1)*10, 10)
-
+	input_df.columns = ['Review', 'idx']
 
 	### Converting every Review text into simple sentences and forming new dataframe as discussed earlier
 	new_df_list = []  # Create a list to store DataFrames
