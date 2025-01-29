@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Food Review Analytics</title>
+    <link rel="icon" type="image/jpeg" href="/static/logo.jpeg">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <style>
+        /* Table Styling */
+        .styled-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+
+        .styled-table th {
+            background-color: #008080;
+            color: white;
+            text-align: left;
+        }
+
+        .styled-table th, .styled-table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+        }
+
+        .styled-table tr:nth-child {
+            background-color: #f2f2f2;
+        }
+
+        .styled-table tr:hover {
+            background-color: #ddd;
+            color: #555;
+        }
+
+        /* General Styling */
+        body {
+            font-family: Arial, sans-serif;
+            background-image: url("https://wallpapercave.com/w/wp7092431.jpg");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            margin: 0;
+            padding: 0;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.8);
+            border-radius: 12px;
+            padding: 40px;
+            width: 80%;
+            max-width: 1200px;
+            margin-top: 20px;
+        }
+
+        .title {
+            font-size: 42px;
+            font-weight: bold;
+            color: #00ffff;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .title img {
+            width: 40px; /* Adjust size of the logo */
+            height: auto;
+            margin-right: 15px;
+        }
+
+        .description {
+            font-size: 22px;
+            font-style: italic;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            margin-bottom: 40px;
+        }
+
+        .btn-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+
+        .option-box {
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+        }
+
+        .custom-file-input {
+            background-color: #00ffff;
+            color: black;
+            border: none;
+            border-radius: 50px;
+            padding: 10px 40px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .custom-submit-input {
+            background-color: #000;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        .custom-file-input:hover {
+            background-color: #008080;
+        }
+
+        .custom-submit-input:hover {
+            background-color: #333;
+        }
+
+        /* Review Form Styling */
+        .review-form {
+            text-align: center;
+            background-color: #000;
+            border-radius: 12px;
+            padding: 20px;
+            width: 80%;
+            margin-top: 20px;
+        }
+
+        #reviewInput {
+            width: 100%;
+            height: 100px;
+            border: 1px solid white;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        #submitReviewButton {
+            background-color: #000;
+            color: white;
+            border: 2px solid white;
+            border-radius: 50px;
+            padding: 10px 20px;
+            cursor: pointer;
+            font-size: 20px;
+        }
+
+        #submitReviewButton:hover {
+            background-color: #333;
+        }
+
+        /* Loader Styling */
+        .loader {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #cf540d;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Hide loader initially */
+        .loader.hidden {
+            display: none;
+        }
+
+        /* Error Message Styling */
+        #errorMessage {
+            color: red;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            border: 2px solid red;
+            border-radius: 8px;
+            background-color: #f8d7da;
+        }
+
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div class="title">
+            <img src="/static/logo.jpeg" alt="Logo">
+            <div>ABSA - Food Review Analytics</div>
+        </div>
+        <div class="description">
+            Upload a CSV file with restaurant reviews to analyze aspects and sentiment.
+        </div>
+
+        <!-- Error Message if Any -->
+        {% if error_message %}
+        <div id="errorMessage">
+            <p>{{ error_message }}</p>
+        </div>
+        {% endif %}
+
+        <!-- File Upload Section -->
+        <div class="btn-container">
+            <form method="POST" action="/absa" enctype="multipart/form-data" id="uploadForm">
+                <div class="option-box">
+                    <label for="file" class="custom-file-input">Choose File</label>
+                    <input type="file" id="file" name="file" required style="display: none;">
+                </div>
+                <div class="option-box">
+                    <input type="submit" value="Generate Output" class="custom-submit-input">
+                </div>
+            </form>
+        </div>
+        <div class="chosen-file" id="chosenFile" style="color: #00ffff; font-size: 16px; margin: 10px 0;"></div>
+
+        <!-- Loader -->
+        <div class="loader hidden" id="loader"></div>
+    </div>
+
+    <!-- Review Section -->
+    <div class="container review-form">
+        <div class="title">Write a Review</div>
+        <form method="POST" action="/absa">
+            <textarea id="reviewInput" name="text" placeholder="Write your review here..." required></textarea>
+            <input type="submit" id="submitReviewButton" value="Analyze Review">
+        </form>
+
+        <!-- Display Result if Available -->
+        {% if result_csv %}
+        <h2>Review:</h2>
+        <p>{{ text_data }}</p>
+
+        <h2>Result:</h2>
+        <table class="styled-table">
+            <tr>
+                <th>Aspect_Term</th>
+                <th>Aspect_Category</th>
+                <th>Sentiment</th>
+            </tr>
+            {% for row in result_csv.split('\n') %}
+            {% if row %}
+            {% set columns = row.split(',') %}
+            <tr>
+                <td>{{ columns[0] }}</td>
+                <td>{{ columns[1] }}</td>
+                <td>{{ columns[2] }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </table>
+        {% endif %}
+    </div>
+
+    <!-- JavaScript for File Display and Loader -->
+    <script>
+        document.getElementById('file').addEventListener('change', function () {
+            const chosenFile = document.getElementById('chosenFile');
+            chosenFile.textContent = this.files[0].name;
+            
+            // Hide error message when a new file is selected
+            const errorMessage = document.getElementById('errorMessage');
+            if (errorMessage) {
+                errorMessage.style.display = 'none';  // Hide the error message when a file is selected
+            }
+        });
+
+        // Show loader when form is submitted
+        document.getElementById('uploadForm').addEventListener('submit', function () {
+            document.getElementById('loader').classList.remove('hidden');  // Show the loader
+        });
+    </script>
+</body>
+
+</html>
