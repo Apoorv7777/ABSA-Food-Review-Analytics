@@ -171,7 +171,7 @@ def main(filename):
 
 	### Preprocessing Review to create new column cleaned_review
 	from tqdm import tqdm
-
+	nltk.download('wordnet')
 	tqdm.pandas()
 
 	# df_temp['y'] = df_temp.ratings.progress_map(label)
