@@ -15,28 +15,11 @@ import seaborn as sns
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import pickle
 
-# Set the NLTK data path to a temporary directory or a cloud-based writable path
-NLTK_DATA_PATH = os.path.join(os.getenv("HOME", "/tmp"), "nltk_data")  # Default to /tmp on Render if HOME is unavailable
 
-# Ensure the NLTK data directory exists
-os.makedirs(NLTK_DATA_PATH, exist_ok=True)
+nltk.download('stopwords')
+nltk.download('punkt')
+nltk.download('vader_lexicon')
 
-# Function to check if a resource exists and download it if missing
-def download_nltk_resource(resource, subfolder="corpora"):
-    resource_path = os.path.join(NLTK_DATA_PATH, subfolder, resource)
-    if not os.path.exists(resource_path):
-        print(f"Downloading {resource}...")
-        nltk.download(resource, download_dir=NLTK_DATA_PATH)
-    else:
-        print(f"{resource} already exists, skipping download.")
-
-# Check and download required NLTK resources
-download_nltk_resource("stopwords.zip")
-download_nltk_resource("punkt.zip", "tokenizers")
-download_nltk_resource("vader_lexicon.zip", "sentiment")
-
-# Set NLTK's data path so it knows where to look
-nltk.data.path.append(NLTK_DATA_PATH)
 
 # Load the spaCy English model
 nlp = spacy.load("en_core_web_sm")
