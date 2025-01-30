@@ -13,8 +13,7 @@ nlp = spacy.load("en_core_web_sm")
 tfidf_vectorizer_AE = load("models/tfidf_vectorizer_AE.pkl")
 SVM_opinion_category_classifier = load("models/SVM_opinion_category_classifier.pkl")
 
-
-#  Aspect and Sentiment analysis for a random text
+# Aspect and Sentiment analysis for a random text
 def extract_aspects(sentence):
     """Extract aspects from a single sentence."""
     important = nlp(sentence)
@@ -38,14 +37,13 @@ def analyze_sentiment(sentence):
         return "neutral"
 
 def absa_random(text):
-    """Perform aspect-based sentiment analysis with multiprocessing."""
+    """Perform aspect-based sentiment analysis without multiprocessing."""
     
     # Breaking complex sentence into simple sentences
     simplified_sentences = split_complex_sentence(preprocess_text(text, 1))
     
-    # Multiprocessing for Aspect Extraction
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        aspects = pool.map(extract_aspects, simplified_sentences)
+    # Aspect Extraction (sequential)
+    aspects = [extract_aspects(sentence) for sentence in simplified_sentences]
     
     # Vectorize the extracted aspects using the pre-fitted TF-IDF Vectorizer
     aspects_tfidf = tfidf_vectorizer_AE.transform(aspects)
@@ -53,15 +51,15 @@ def absa_random(text):
     # Predict the Opinion Category for each aspect
     predicted_aspects = SVM_opinion_category_classifier.predict(aspects_tfidf)
 
-    # Multiprocessing for Sentiment Analysis
-    with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-        predicted_sentiments = pool.map(analyze_sentiment, simplified_sentences)
+    # Sentiment Analysis (sequential)
+    predicted_sentiments = [analyze_sentiment(sentence) for sentence in simplified_sentences]
     
     # Return the results in a formatted structure
     result = "\n".join([f"{aspect},{category},{sentiment}"
                         for aspect, category, sentiment in zip(aspects, predicted_aspects, predicted_sentiments)])
 
     return result
+
 
 
 
