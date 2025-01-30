@@ -2,20 +2,19 @@
 import sys
 import pandas as pd
 import spacy
-import nltk
 import re
 import string
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
-import os
 from deep_translator import GoogleTranslator
 from nltk.tokenize import sent_tokenize
 import matplotlib.pyplot as plt
 import seaborn as sns
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import pickle
 
-
+from joblib import load
+from multiprocessing import Pool
+import multiprocessing
+import numpy as np
 # Load the spaCy English model
 nlp = spacy.load("en_core_web_sm")
 
@@ -25,17 +24,11 @@ lemmatizer = WordNetLemmatizer()
 
 
 # Load the vectorizer and model
-with open("models/tfidf_vectorizer_AE.pkl", "rb") as f:
-    tfidf_vectorizer_AE = pickle.load(f)
+tfidf_vectorizer_AE = load("models/tfidf_vectorizer_AE.pkl")
+SVM_opinion_category_classifier = load("models/SVM_opinion_category_classifier.pkl")
+tfidf_vectorizer_SA = load("models/tfidf_vectorizer_SA.pkl")
+svm_sentiment_classifier = load("models/svm_sentiment_classifier.pkl")
 
-with open("models/SVM_opinion_category_classifier.pkl", "rb") as f:
-    SVM_opinion_category_classifier = pickle.load(f)
-
-with open("models/tfidf_vectorizer_SA.pkl", "rb") as f:
-    tfidf_vectorizer_SA = pickle.load(f)
-
-with open("models/svm_sentiment_classifier.pkl", "rb") as f:
-    svm_sentiment_classifier = pickle.load(f)
 
 
 ## Translate text into English
@@ -49,96 +42,112 @@ def translate(text):
 
 ## Handling Emojies
 
-positive_emojis = """😄😀😁😆😂🤣😊🙂😎😉😍🥰😘😋😛😝😜🤪🤩🥳🥰❤️👍👌🤟🍔🍕🍣🍰🍹🍷🍺
-	            🍦🍯🥞🍟🍩🥼🎉🎊🥳🍚🍘🍥🥠🥮🍢🍡🍧🍨🍦🥧🧁🍰🎂🍮🍭🍬🍫🍿🍩🍪🌰🥜
-	            🍯🍻🥂🍷🍾😀😃😄😆😅🥲\😊😇🙂😀😃😄😁😅😆😂🙂😊🤒👏"""
+# Define emojis (expanded with your emojis)
+positive_emojis = { "😄", "😀", "😁", "😆", "😂", "🤣", "😊", "🙂", "😎", "😉", "😍", "🥰", "😘", "😋", "😛", "😝", "😜", "🤪", "🤩", "🥳", "❤️", "👍", "👌", "🤟", "🍔", "🍕", "🍣", "🍰", "🍹", "🍷", "🍺", "🍦", "🍯", "🥞", "🍟", "🍩", "🥼", "🎉", "🎊", "🥳", "🍚", "🍘", "🍥", "🥠", "🥮", "🍢", "🍡", "🍧", "🍨", "🍦", "🥧", "🧁", "🍰", "🎂", "🍮", "🍭", "🍬", "🍫", "🍿", "🍩", "🍪", "🌰", "🥜", "🍯", "🍻", "🥂", "🍷", "🍾", "😇", "🤒", "👏"}
+negative_emojis = { "😔", "😞", "😢", "😭", "😤", "😠", "😡", "🤬", "😩", "😫", "🥺", "😖", "😣", "😠", "😤", "😷", "🤒", "🤕", "😐", "😶", "😒", "😏", "🙁", "🥶", "😨", "😱", "😰", "😳", "🥵", "😳", "😵", "🤯", "🤐", "🤮", "🥴", "🤢", "👎", "😈", "👿", "💔", "😩", "😔", "😞", "😢", "😭" }
 
-    
-negative_emojis = """😔😞😢😭😤😠😡🤬😩😫🥺😖😣😠😤😷🤒🤕😐😶😒😏🙁🥶😨😱😰😳🥵😳😵
-	             🤯🤐🤮🥴🤢👎😈👿💔😩😔😞😢😭"""
-
-# add space between word and emoji
-def handle_emoji_helper(text):
-	i = 0
-	lst = list(text)
-	for word in text:
-		if word != " " and (word in positive_emojis or word in negative_emojis):
-			lst.insert(i," ")
-		i+=1
-	return "".join(lst)
-
+# Add space between word and emoji
 def handle_emoji(sentence):
-	sentence = handle_emoji_helper(sentence)
-	words = sentence.split()
-	converted_sentence = []
-	for word in words:
-		if word in positive_emojis:
-			converted_sentence.append("good") # Don't change ( one word sentences will be removed in
-		elif word in negative_emojis:                                     #      preprocessing )
-			converted_sentence.append("bad")
-		else:
-			converted_sentence.append(word)
-	return " ".join(converted_sentence)
+    # Regex pattern for positive and negative emojis
+    emoji_pattern = re.compile(r'|'.join(map(re.escape, positive_emojis | negative_emojis)))
+    
+    # Replace emojis with respective labels
+    def replace_emoji(match):
+        emoji_char = match.group(0)
+        if emoji_char in positive_emojis:
+            return "good"
+        elif emoji_char in negative_emojis:
+            return "bad"
+        return emoji_char  # This case should never occur as we handle all emojis
 
-# # Example usage:
-# input_sentence = "😀"
-# input_sentence = "बढ़िया खाना था😀"
-# converted = handle_emoji(input_sentence)
-# print(converted)
-
+    # Replace emojis in sentence
+    sentence = emoji_pattern.sub(replace_emoji, sentence)
+    
+    return sentence
 
 ## Data PreProcessing
 
 # Data Cleaning
 def clean_text(text):
-	if text is not None:
-		# Lowercase the text
-		text = text.lower()
-		# Remove special characters and punctuation
-		text = re.sub(f"[{re.escape(string.punctuation)}]", "", text)
-	return text
+    if text is not None:
+        text = text.lower() # Lowercase the text
+        text = re.sub(f"[{re.escape(string.punctuation)}]", "", text)   # Remove special characters and punctuation
+    return text
 
 # Text preprocessing functions
-def preprocess_text(text, state = 0):
-	text = handle_emoji(text)
-	if state == 1:
-		text = translate(text)
-	if text is not None:
-		if state == 0:
-			text = clean_text(text)
-			text = ' '.join([lemmatizer.lemmatize(word) for word in text.split() if (word.lower() not in stop_words or word.lower() == 'not') and len(word)>2])
-			text = text if len(text.split()) > 1 else ""    
-		
-	return text
+def preprocess_text(text, state=0):
+    if state == 1:
+        text = translate(text)
+    if text:
+        text = handle_emoji(text)
+        text = clean_text(text)
+        doc = nlp(text)
+        text = " ".join([token.lemma_ for token in doc if (not token.is_stop or token.text.lower()  =="not") and len(token.text) > 2])
+        return text if len(text.split()) > 1 else ""
+    return ""
     
     
 ### Function to tokenize text into sentences
-def split_complex_sentence(text):
-	doc = nlp(text) # Parse the text
-	simpler_sentences = []
-	temp_sentence = []
+def split_complex_sentence(texts):
+    if isinstance(texts, str):  # If a single string is passed, convert it to a list
+        texts = [texts]
+
+    simpler_sentences = []
+    for doc in nlp.pipe(texts, batch_size=100):  # Process texts in batches
+        temp_sentence = []
+        for token in doc:
+            if token.dep_ == "cc":  # Coordinating conjunction (splitting criterion)
+                if temp_sentence:
+                    simpler_sentences.append(" ".join(temp_sentence))
+                temp_sentence = []
+            else:
+                temp_sentence.append(token.text)
+        if temp_sentence:
+            simpler_sentences.append(" ".join(temp_sentence))
+    return simpler_sentences
+
+
+def parallel_apply(df, func):
+    """Apply a function in parallel using multiprocessing."""
+    num_chunks = multiprocessing.cpu_count()
+    df_split = np.array_split(df, num_chunks)
     
-	# Iterate through the parsed tokens
+    with multiprocessing.Pool(processes=num_chunks) as pool:
+        df = pd.concat(pool.map(func, df_split))  # Apply function in parallel
+    return df
+
+
+
+# Ensure preprocess_text works on a dataframe partition
+def preprocess_dataframe(df):
+	df['Cleaned_Review'] = df['Review'].apply(preprocess_text)  # Apply text processing
+	return df
+
+# Aspect extraction function
+def extract_aspect(sentence):
+	# Use Spacy to process the sentence
+	doc = nlp(sentence)
+	
+	target = ''
+	temp_target = ''
+
+	# Loop through tokens and extract the subject (noun)
 	for token in doc:
-		# Check for coordinating conjunctions (e.g., "and," "but") to split the sentence
-		if token.dep_ == "cc":
-			if temp_sentence:
-				simpler_sentences.append(" ".join(temp_sentence))
-			temp_sentence = []
-		else:
-			temp_sentence.append(token.text)
+		if token.dep_ == 'nsubj' and token.pos_ == 'NOUN':
+			target = token.text
+		if target == '' and token.pos_ == 'NOUN':
+			temp_target = token.text
 
-	if temp_sentence:
-		simpler_sentences.append(" ".join(temp_sentence))
+	if target == '': 
+		target = temp_target
 
-	sentences = []
-	for sentence in simpler_sentences:
-		sentences.append(sent_tokenize(sentence))
-
-	flattened_sentences = [sentence for sublist in sentences for sentence in sublist]
-	return flattened_sentences
-
-
+	return target
+      
+# Function to apply 'extract_aspect' row by row
+def apply_extract_aspect(df):
+	df['Opinion_Target'] = df['Review'].apply(extract_aspect)
+	return df
+      
 
 def main(filename):
 
@@ -148,30 +157,14 @@ def main(filename):
 	input_df.columns = ['Review', 'idx']
 
 	### Converting every Review text into simple sentences and forming new dataframe as discussed earlier
-	new_df_list = []  # Create a list to store DataFrames
+	input_df['Simplified_Review'] = input_df['Review'].apply(lambda x: split_complex_sentence(x))
+	input_df = input_df.explode('Simplified_Review')
 
-	for i, (idx, text) in enumerate(zip(input_df['idx'], input_df['Review'])):
-		sentences = split_complex_sentence(text)  # split_complex_sentence defined in the start
-		sentences_df = pd.DataFrame({'Review': sentences, 'idx': range(idx, idx + len(sentences))})
-		new_df_list.append(sentences_df)
+	# Drop the original 'Review' column and rename the simplified column as 'Review'
+	input_df = input_df.drop(columns=['Review']).rename(columns={'Simplified_Review': 'Review'})
 
-	new_df = pd.concat(new_df_list, ignore_index=True)  # Concatenate all DataFrames at once
-
-
-
-	### Replacing old dataset by new dataset
-	input_df = new_df.copy()
-	# input_df.head() # print dataset head
-
-
-	### Preprocessing Review to create new column cleaned_review
-	from tqdm import tqdm
-
-	tqdm.pandas()
-
-	# df_temp['y'] = df_temp.ratings.progress_map(label)
-	input_df['Cleaned_Review'] = input_df['Review'].progress_map(preprocess_text)
-	#input_df.head()
+	# Apply preprocessing in parallel
+	input_df = parallel_apply(input_df, preprocess_dataframe)
 
 
 	### Deleting rows where cleaned_review column is empty
@@ -189,33 +182,8 @@ def main(filename):
 	input_df = input_df[desired_order]
 
 
-	# Opinion Target (Aspect) Extraction
-	# An empty list for obtaining the extracted aspects from sentences.  
-	aspects =[]
-
-	sentences = input_df['Review']
-	sentences = sentences.astype(str)
-	# Performing Aspect Extraction 
-	for sen in sentences: 
-		important = nlp(sen)  # Fix the variable name 'sen'
-		descriptive_item = '' 
-		target = '' 
-		temp_target = ''
-		for token in important: 
-			if token.dep_ == 'nsubj' and token.pos_ == 'NOUN': 
-				target = token.text   
-			if target =='' and token.pos_ == 'NOUN': 
-				temp_target = token.text 
-
-		if target == '': target = temp_target
-		aspects.append(target)
-
-	# creating a dataset having sinlge column = Opinion_Target
-	new_column_df = pd.DataFrame({'Opinion_Target' : aspects})
-
-	# Concatenate new column ( Opinion_Target ) into input_df dataset horizontally (along columns)
-	input_df = pd.concat([input_df, new_column_df], axis=1)
-	# input_df.head()
+	# Apply aspect extraction in parallel
+	input_df = parallel_apply(input_df, apply_extract_aspect)
 
 
 	## Predict the Opinion_Category 
@@ -257,272 +225,111 @@ def main(filename):
 
 # **********************Charts ******************************
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+def plot_bar_graph(grouped, column_name, title, xlabel, ylabel, file_name, color='skyblue'):
+    ax = grouped[column_name].plot(kind='bar', color=color, edgecolor='gray')
+    # Add data labels
+    for i, value in enumerate(grouped[column_name]):
+        ax.text(i, value + 2, f'{value:.2f}%', ha='center', fontsize=10, fontweight='bold', color='black')
+
+    # Set labels, title, and other customizations
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.yaxis.grid(linestyle='--', alpha=0.6)
+    plt.xticks(rotation=45)
+    plt.gcf().set_size_inches(10, 6)
+    plt.tight_layout()
+    plt.savefig(file_name, format='png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def plot_stacked_bar_graph(grouped, columns, title, xlabel, ylabel, file_name):
+    ax = grouped[columns].plot(kind='bar', stacked=True)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig(file_name, format='png', dpi=300)
+    plt.close()
+
+def plot_doughnut_chart(grouped, file_name):
+    colors = ['skyblue', 'lightcoral', 'lightgreen', 'lightsalmon', 'lightcyan']
+    fig, ax = plt.subplots()
+    wedges, texts, autotexts = ax.pie(
+        grouped['Count'],
+        labels=None,
+        autopct='',
+        startangle=140,
+        colors=colors,
+        wedgeprops=dict(width=0.4)
+    )
+    legend_labels = [f'{category}: {percentage:.1f}%' for category, percentage in zip(grouped['Opinion_Category'], grouped['Percentage of Total Reviews'])]
+    ax.legend(wedges, legend_labels, loc="center left", bbox_to_anchor=(1, 0.5), title="Opinion_Category")
+    plt.axis('equal')
+    plt.title('Aspect Category Distribution (Doughnut Chart)')
+    plt.tight_layout()
+    plt.savefig(file_name, format='png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def plot_countplot(df, file_name):
+    sns.set_palette("Set2")
+    plt.figure(figsize=(8, 6))
+    ax = sns.countplot(x="Opinion_Polarity", data=df, order=df["Opinion_Polarity"].value_counts().index)
+    plt.title("Sentiment Polarity Distribution for Reviews")
+    plt.xlabel("Sentiment Polarity")
+    plt.ylabel("Count")
+    for p in ax.patches:
+        ax.annotate(f'{p.get_height()}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                    ha='center', va='center', fontsize=12, color='black', fontweight='bold')
+    plt.xticks(rotation=0)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.savefig(file_name, format='png', dpi=300)
+    plt.close()
+
 def graphs(df):
-
-	# Graph : 1
-	# Group the DataFrame by 'Opinion_Category' and 'Opinion_Polarity' and count occurrences
-	grouped = df.groupby(['Opinion_Category', 'Opinion_Polarity']).size().unstack(fill_value=0)
-
-	# Calculate the percentage of positive Opinion_Polarity for each Opinion_Category
-	grouped['Percentage of Positive Opinion_Polarity'] = (grouped['positive'] / (grouped['positive'] + grouped['negative'])) * 100
-
-	# Set a custom color palette
-	sns.set_palette("pastel")
-
-	# Create a bar plot with a nicer color palette
-	ax = grouped['Percentage of Positive Opinion_Polarity'].plot(kind='bar', color='skyblue', edgecolor='gray')
-
-	# Add data labels on top of each bar
-	for i, percentage in enumerate(grouped['Percentage of Positive Opinion_Polarity']):
-		ax.text(i, percentage + 2, f'{percentage:.2f}%', ha='center', fontsize=10, fontweight='bold', color='black')
-
-	# Set the labels and title
-	ax.set_xlabel('Opinion_Category')
-	ax.set_ylabel('Percentage of Positive Sentiments (for Reviews)')
-	plt.title('Percentage of Positive Sentiment based on Aspect Category')
-
-	# Customize the grid lines
-	ax.yaxis.grid(linestyle='--', alpha=0.6)
-
-	# Rotate the x-axis labels for better readability
-	plt.xticks(rotation=45)
-
-	# Increase the figure size for better aesthetics
-	plt.gcf().set_size_inches(10, 6)
-
-	# Save the plot as an image with higher resolution and adjust bbox_inches
-	plt.savefig('static/output_graph_images/sample_plot1.png', format='png', dpi=300, bbox_inches='tight')
-
-	# Show the plot
-	#plt.tight_layout()
-	#plt.show()
-
-
-
-
-	# Graph : 2
-	# Group the DataFrame by 'Opinion_Category' and 'Opinion_Polarity' and count occurrences
-	grouped = df.groupby(['Opinion_Category', 'Opinion_Polarity']).size().unstack(fill_value=0)
-
-	# Calculate the percentage of negative Opinion_Polarity for each Opinion_Category
-	grouped['Percentage of Negative Opinion_Polarity'] = (grouped['negative'] / (grouped['positive'] + grouped['negative'])) * 100
-
-	# Set a custom color palette
-	sns.set_palette("pastel")
-
-	# Create a bar plot with improved styling
-	plt.figure(figsize=(10, 6))  # Adjust the figure size
-	ax = sns.barplot(x=grouped.index, y=grouped['Percentage of Negative Opinion_Polarity'],hue=grouped.index, palette="Blues_d",legend=False)
-
-	# Customize the plot's appearance
-	plt.title("Percentage of Negative Sentiment based on Aspect Category")
-	plt.xlabel("Opinion_Category")
-	plt.ylabel("Percentage of Negative Sentiments (for Reviews)")
-
-	# Rotate the x-axis labels for better readability
-	plt.xticks(rotation=45)
-
-	# Add data labels on top of each bar
-	for p in ax.patches:
-		ax.annotate(f'{p.get_height():.2f}%', (p.get_x() + p.get_width() / 2., p.get_height()),
-				ha='center', va='center', fontsize=10, fontweight='bold')
-
-	# Add a background grid for better visual separation
-	ax.yaxis.grid(linestyle='--', alpha=0.6)
-
-	# Increase the spacing between the plot and the x-axis label
-	plt.tight_layout()
-
-	# Save the plot as an image with higher resolution
-	plt.savefig('static/output_graph_images/sample_plot2.png', format='png', dpi=300)
-
-	# Show the plot
-	#plt.show()
-
-
-
-	# Graph : 3
-	# Group the DataFrame by 'Opinion_Category' and 'Opinion_Polarity' and count occurrences
-	grouped = input_df.groupby(['Opinion_Category', 'Opinion_Polarity']).size().unstack(fill_value=0)
-
-	# Calculate the percentage of positive and negative Opinion_Polarity for each Opinion_Category
-	grouped['Percentage of Positive Opinion_Polarity'] = (grouped['positive'] / (grouped['positive'] + grouped['negative'])) * 100
-	grouped['Percentage of Negative Opinion_Polarity'] = (grouped['negative'] / (grouped['positive'] + grouped['negative'])) * 100
-
-	# Plot the percentages of positive and negative Opinion_Polarity for each Opinion_Category
-	ax = grouped[['Percentage of Positive Opinion_Polarity', 'Percentage of Negative Opinion_Polarity']].plot(kind='bar', color=['skyblue', 'salmon'])
-	ax.set_xlabel('Aspect Category')
-	ax.set_ylabel('Percentage')
-	plt.title('Percentage of Positive and Negative Sentiment based on Aspect Category')
-	plt.xticks(rotation=45)
-	plt.tight_layout()
-	plt.savefig('static/output_graph_images/sample_plot3.png',format='png', dpi=300)
-	#plt.show()
-	
-
-	# Graph : 4
-	# Group the DataFrame by 'Opinion_Category' and count occurrences
-	grouped = input_df['Opinion_Category'].value_counts().reset_index()
-	grouped.columns = ['Opinion_Category', 'Count']
-
-	# Calculate the percentage of total reviews for each category
-	grouped['Percentage of Total Reviews'] = (grouped['Count'] / grouped['Count'].sum()) * 100
-
-	# Set colors for the doughnut chart
-	colors = ['skyblue', 'lightcoral', 'lightgreen', 'lightsalmon', 'lightcyan']
-
-	# Create a doughnut chart for Opinion_Category Distribution
-	fig, ax = plt.subplots()
-
-	# Plot the pie chart (outer circle)
-	wedges, texts, autotexts = ax.pie(
-	    grouped['Count'],
-	    labels=None,  # No labels on slices
-	    autopct='',
-	    startangle=140,
-	    colors=colors,
-	    wedgeprops=dict(width=0.4)  # Set the width to create a doughnut chart
-	)
-
-	# Add a legend with color-coded labels and percentages in a table
-	legend_labels = [f'{category}: {percentage:.1f}%' for category, percentage in zip(grouped['Opinion_Category'], grouped['Percentage of Total Reviews'])]
-	ax.legend(wedges, legend_labels, loc="center left", bbox_to_anchor=(1, 0.5), title="Opinion_Category")
-
-	plt.axis('equal')
-	plt.title('Aspect Category Distribution (Doughnut Chart)')
-
-	plt.tight_layout()
-
-	# Save the plot as an image with higher resolution and adjust bbox_inches
-	plt.savefig('static/output_graph_images/sample_plot4.png', format='png', dpi=300, bbox_inches='tight')
-
-	# Show the plot
-	#plt.show()
-
-	# Graph : 5
-	# Set a custom color palette for the plot
-	sns.set_palette("Set2")
-
-	# Create a countplot using Seaborn
-	plt.figure(figsize=(8, 6))  # Adjust the figure size
-	sns.countplot(x="Opinion_Polarity", data=df, order=df["Opinion_Polarity"].value_counts().index)
-
-	# Customize the plot's appearance
-	plt.title("Sentiment Polarity Distribution for reviews")
-	plt.xlabel("Sentiment Polarity")
-	plt.ylabel("Count")
-
-	# Add data labels on top of each bar
-	ax = plt.gca()
-	for p in ax.patches:
-		ax.annotate(f'{p.get_height()}', (p.get_x() + p.get_width() / 2., p.get_height()),
-		        ha='center', va='center', fontsize=12, color='black', fontweight='bold')
-
-	# Rotate x-axis labels for better readability
-	plt.xticks(rotation=0)
-
-	# Add a background grid for better visual separation
-	plt.grid(axis='y', linestyle='--', alpha=0.7)
-
-	# Increase the spacing between the plot and the x-axis label
-	plt.tight_layout()
-
-	# Save the plot as an image with higher resolution
-	plt.savefig('static/output_graph_images/sample_plot5.png', format='png', dpi=300)
-
-	# Show the plot
-	#plt.show()
-
-
-
-### -----------------------xxxxxxxxxxxxxxxxxxxxxxxxxxxxX-----------------------------
-
-# Aspect and Sentiment analysis for a random text
-def absa_random(text):
-	### Text
-	#text = "The pizza is delicious but service is terrible. The atmosphere is also not good.😀"
-	# text = "😀"
-	# text = "बढ़िया खाना था😀"  # Hindi Language
-
-
-	### Breaking complex sentence into simple sentences
-	simplified_sentences = split_complex_sentence(preprocess_text(text,1))
-	#print(simplified_sentences)
-
-	### Opinion Target(Aspect) Extraction
-	# An empty list for obtaining the extracted aspects from sentences.  
-	ext_aspects = [] 
-	aspects =[]
-
-	# Performing Aspect Extraction 
-	for sen in simplified_sentences: 
-		important = nlp(sen)  # Fix the variable name 'sen'
-		descriptive_item = '' 
-		target = '' 
-		for token in important: 
-			if token.dep_ == 'nsubj' and token.pos_ == 'NOUN': 
-				target = token.text
-			elif token.pos_ == 'NOUN': 
-				target = token.text
-		if target == "": target = "restaurant"
-		aspects.append(target)
-
-	######print("\nASPECTS : ",aspects)
-
-
-	### Predict the Opinion_Category
-
-	# Vectorize the sample sentence using the same tfidf_vectorizer
-	sample_tfidf = tfidf_vectorizer_AE.transform(aspects)
-
-	# Predict the sentiment for the sample sentence
-	predicted_aspect = SVM_opinion_category_classifier.predict(sample_tfidf)
-
-	#########print(f"Predicted Aspect Category: {predicted_aspect}")
-
-
-	### Predict the Opinion_Polarity
-
-	# Create a SentimentIntensityAnalyzer object
-	sid = SentimentIntensityAnalyzer()
-
-	# Preprocess the sample sentences
-	preprocessed_sample_sentences = [preprocess_text(sentence,1) for sentence in simplified_sentences]
-
-	predicted_sentiments = []
-	# Analyze sentiment
-	for sentence in preprocessed_sample_sentences:
-		sentiment_scores = sid.polarity_scores(sentence)
-		# Determine the sentiment label
-		if sentiment_scores['compound'] >= 0.05:
-			sentiment_label = "positive"
-		# else : sentiment_label = 'negative'
-		elif sentiment_scores['compound'] <= -0.05:
-			sentiment_label = "negative"
-		else:
-			sentiment_label = "neutral"
-
-		predicted_sentiments.append(sentiment_label)
-	#     print(f"Text: {sentence}")
-	#     print(f"Compound Score: {sentiment_scores['compound']}")
-	#######print(f"Predicted Sentiment: {predicted_sentiments}")
-
-
-	'''## Resultant Table: 
-	result_df = pd.DataFrame({"Aspect_Term" : aspects,
-		                  "Aspect_Category" : predicted_aspect,
-		                  "Sentiment" : predicted_sentiments})
-	#######print("\n"result_df)
-	return result_df'''
-	
-	res = zip(aspects,predicted_aspect,predicted_sentiments)
-	rows=[]
-	for i,j,k in res:
-		rows.append(",".join([i,j,k]))
-	sentence_info = "\n".join(rows)
-	
-	return sentence_info
-
+    # Graph 1: Percentage of Positive Sentiment
+    grouped = df.groupby(['Opinion_Category', 'Opinion_Polarity']).size().unstack(fill_value=0)
+    grouped['Percentage of Positive Opinion_Polarity'] = (grouped['positive'] / (grouped['positive'] + grouped['negative'])) * 100
+    plot_bar_graph(grouped, 'Percentage of Positive Opinion_Polarity', 'Percentage of Positive Sentiment based on Aspect Category',
+                   'Opinion_Category', 'Percentage of Positive Sentiments (for Reviews)', 'static/output_graph_images/sample_plot1.png')
+
+    # Graph 2: Percentage of Negative Sentiment
+    grouped['Percentage of Negative Opinion_Polarity'] = (grouped['negative'] / (grouped['positive'] + grouped['negative'])) * 100
+    plt.figure(figsize=(10, 6))
+    ax = sns.barplot(x=grouped.index, y=grouped['Percentage of Negative Opinion_Polarity'], hue=grouped.index, palette="Blues_d", legend=False)
+    plt.title("Percentage of Negative Sentiment based on Aspect Category")
+    plt.xlabel("Opinion_Category")
+    plt.ylabel("Percentage of Negative Sentiments (for Reviews)")
+    for p in ax.patches:
+        ax.annotate(f'{p.get_height():.2f}%', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', fontsize=10, fontweight='bold')
+    ax.yaxis.grid(linestyle='--', alpha=0.6)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+    plt.savefig('static/output_graph_images/sample_plot2.png', format='png', dpi=300)
+    plt.close()
+
+    # Graph 3: Positive and Negative Sentiment Side by Side
+    plot_stacked_bar_graph(grouped, ['Percentage of Positive Opinion_Polarity', 'Percentage of Negative Opinion_Polarity'],
+                           'Percentage of Positive and Negative Sentiment based on Aspect Category',
+                           'Aspect Category', 'Percentage', 'static/output_graph_images/sample_plot3.png')
+
+    # Graph 4: Aspect Category Distribution (Doughnut Chart)
+    grouped = df['Opinion_Category'].value_counts().reset_index()
+    grouped.columns = ['Opinion_Category', 'Count']
+    grouped['Percentage of Total Reviews'] = (grouped['Count'] / grouped['Count'].sum()) * 100
+    plot_doughnut_chart(grouped, 'static/output_graph_images/sample_plot4.png')
+
+    # Graph 5: Sentiment Polarity Distribution
+    plot_countplot(df, 'static/output_graph_images/sample_plot5.png')
+
+
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 if __name__ == "__main__":
 
@@ -537,11 +344,7 @@ if __name__ == "__main__":
 		
 		input_df = main(data)
 		graphs(input_df)
-	else:
-		# Handle text data
-		resultcsv = absa_random(data)
-		print(resultcsv) # Print the result CSV to the console
-		
+	
 		
 		
 		

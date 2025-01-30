@@ -38,7 +38,7 @@ def upload_file():
     if text_data:
         try:
             result_csv = subprocess.check_output(
-                ["python", "testing.py", text_data], text=True, stderr=subprocess.STDOUT
+                ["python", "single_review_testing.py", text_data], text=True, stderr=subprocess.STDOUT
             )
         except subprocess.CalledProcessError as e:
             print("Error:", e.output)  # Log the error output from main.py
@@ -76,4 +76,4 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
